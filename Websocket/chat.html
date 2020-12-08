@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>WebSocket聊天室</title>
+    <style type="text/css">
+        .container {
+            font-family: "Courier New";
+            width: 500px;
+            height: 400px;
+            overflow: auto;
+            border: 1px solid black;
+            padding: 8px;
+            background-color: lightgray;
+        }
+ 
+        .LockOff {
+            display: none;
+            visibility: hidden;
+        }
+ 
+        .LockOn {
+            display: block;
+            visibility: visible;
+            position: absolute;
+            z-index: 999;
+            top: 0px;
+            left: 0px;
+            width: 1024%;
+            height: 768%;
+            background-color: #ccc;
+            text-align: center;
+            padding-top: 20%;
+            filter: alpha(opacity=75);
+            opacity: 0.75;
+        }
+ 
+        .userName {
+            color: white;
+            font-size: 12px;
+        }
+ 
+        .chatLeft {
+            display: inline-block;
+            color: black;
+            font-size: 14px;
+            margin-left: 20px;
+            padding: 3px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            text-align: left;
+            vertical-align: middle;
+        }
+ 
+        .chatRight {
+            display: inline-block;
+            color: white;
+            font-size: 14px;
+            padding: 3px;
+            border: 1px solid #ccc;
+            background-color: #9eea6a;
+            text-align: left;
+            vertical-align: middle;
+        }
+ 
+        .login {
+            width: 100%;
+            display: inline-block;
+            text-align: center;
+            color: #ffff33;
+            font-size: 14px;
+            font-weight: 700;
+        }
+ 
+        .logout {
+            width: 100%;
+            display: inline-block;
+            text-align: center;
+            color: #ffa31a;
+            font-size: 14px;
+        }
+ 
+        .systemInfo {
+            color: gray;
+            font-size: 15px;
+        }
+ 
+        .error {
+            width: 100%;
+            display: inline-block;
+            text-align: center;
+            color: red;
+            font-size: 16px;
+            font-weight: 700;
+        }
+    </style>
+ 
+</head>
+<body>
+    <div id="skm_LockPane" class="LockOff"></div>
+    <form id="form1" runat="server">
+        <h1>WebSocket 聊天室</h1>
+        <div>
+            按下连接按钮，会通过WebSocket发起一个到聊天浏览器的连接。
+        </div>
+        服务器地址: <input type="text" id="Connection" /> 用户名： <input type="text" id="txtName" value="张三" />
+        <button id='ToggleConnection' type="button" onclick='ToggleConnectionClicked();'>连接</button>
+        <input type="hidden" value="" id="identity" />
+        <br />
+        <br />
+        <div id='LogContainer' class='container'>
+        </div>
+        <br />
+        <div id='SendDataContainer'>
+            <input type="text" id="DataToSend" size="68" />
+            <button id='SendData' type="button" onclick='SendDataClicked();'>发送</button>
+        </div>
+        <br />
+    </form>
+ 
+    <script src="../../js/jquery.min.js"></script>
+    <script type="text/javascript">
+        //webSocket对象
+        var ws;
+        //Socket是否创建
+        var SocketCreated = false;
+        //用户是否退出登录
+        var isUserloggedout = false;
+ 
+        //模拟用户唯一标识
+        var identity = "";
+        var userName = "";
+        var LOGIN = 1, LOGOUT = 2, CHATINFO = 3, SYSYEMINFO = 4, ERROR = -1;
+ 
+        function lockOn(str) {
+            var lock = document.getElementById('skm_LockPane');
+            if (lock)
+                lock.className = 'LockOn';
+            lock.innerHTML = str;
+        }
+ 
+        function lockOff() {
+            var lock = document.getElementById('skm_LockPane');
+            lock.className = 'LockOff';
+        }
+ 
+        function ToggleConnectionClicked() {
+            userName = document.getElementById("txtName").value.trim();
+            if (identity.trim() == "") {
+                identity = newGuid();
+            }
+            //(连接尚未建立||连接已建立)
+            if (SocketCreated && (ws.readyState == 0 || ws.readyState == 1)) {
+                lockOn("离开聊天室...");
+                SocketCreated = false;
+                isUserloggedout = true;
+                var data = MsgData(LOGOUT, "【" + userName + "】" + "离开了聊天室!");
+                ws.send(JSON.stringify(data));
+                ws.close();
+            } else {
+                lockOn("进入聊天室...");
+                var data = MsgData(SYSYEMINFO, "准备连接到聊天服务器...");
+                Log(data);
+                try {
+                    if ("WebSocket" in window) {
+                        ws = new WebSocket("ws://" + document.getElementById("Connection").value);
+                    }
+                    else if ("MozWebSocket" in window) {
+                        ws = new MozWebSocket("ws://" + document.getElementById("Connection").value);
+                    }
+                    SocketCreated = true;
+                    isUserloggedout = false;
+                } catch (ex) {
+                    var data = MsgData(ERROR, ex);
+                    Log(data);
+                    return;
+                }
+                document.getElementById("ToggleConnection").innerHTML = "断开";
+                ws.onopen = WSonOpen;
+                ws.onmessage = WSonMessage;
+                ws.onclose = WSonClose;
+                ws.onerror = WSonError;
+            }
+        };
+ 
+        //WebSocket打开事件
+        function WSonOpen() {
+            lockOff();
+            var data = MsgData(SYSYEMINFO, "连接已经建立.");
+            Log(data);
+            $("#SendDataContainer").show();
+            var data = MsgData(LOGIN, "欢迎【" + userName + "】来到聊天室！");
+            ws.send(JSON.stringify(data));
+        };
+        //WebSocket接收消息事件
+        function WSonMessage(event) {
+            Log(event.data);
+        };
+        //WebSocket关闭连接事件
+        function WSonClose() {
+            lockOff();
+            if (isUserloggedout) {
+                var data = MsgData(LOGOUT, "【" + userName + "】" + "离开了聊天室!");
+                Log(JSON.stringify(data));
+            }
+            document.getElementById("ToggleConnection").innerHTML = "连接";
+            $("#SendDataContainer").hide();
+        };
+        //WebSocket发生错误
+        function WSonError() {
+            lockOff();
+            var data = MsgData(ERROR, "远程连接中断...");
+            Log(data);
+        };
+ 
+ 
+        function SendDataClicked() {
+            if (document.getElementById("DataToSend").value.trim() != "") {
+                var data = MsgData(CHATINFO, document.getElementById("DataToSend").value)
+                ws.send(JSON.stringify(data));
+                document.getElementById("DataToSend").value = "";
+            }
+        };
+ 
+        //传递的消息对象
+        function MsgData(MsgType, Message) {
+            var data = new Object();
+            data.Identity = identity;
+            data.UserName = userName;
+            data.MsgType = MsgType;
+            data.Message = Message;
+            return data;
+        }
+ 
+        function Log(data) {
+            console.log(data);
+            if (!(data.constructor === Object)) {
+                data = JSON.parse(data);
+            }
+            var html = "";
+            if (data.MsgType === CHATINFO) {
+                if (data.Identity === identity) {
+                    html = "<div style='display:inline-block;width:100%;text-align:right;margin-bottom:2px'>";
+                    html += "<span class='chatRight'>" + data.Message + "</span>";
+                    html += "</div>";
+                }
+                else {
+                    html += "<span class='userName'>" + data.UserName + ":</span>";
+                    html += "</br>";
+                    html += "<span class='chatLeft'>" + data.Message + "</span>";
+                }
+            }
+            else if (data.MsgType === LOGIN) {
+                html = "<span class='login'>" + data.Message + "</span>"
+            }
+            else if (data.MsgType === LOGOUT) {
+                html = "<span class='logout'>" + data.Message + "</span>"
+            }
+            else if (data.MsgType === SYSYEMINFO) {
+                html += "<span class='systemInfo'>" + data.Message + "</span>";
+            }
+            else if (data.MsgType === ERROR) {
+                html = "<span class='error'>" + data + "</span>";
+            }
+            document.getElementById("LogContainer").innerHTML = document.getElementById("LogContainer").innerHTML + html + "<br />";
+            var LogContainer = document.getElementById("LogContainer");
+            LogContainer.scrollTop = LogContainer.scrollHeight;
+        };
+        //JS生成GUID函数,类似.net中的NewID();
+        function newGuid() {
+            var guid = "";
+            for (var i = 1; i <= 32; i++) {
+                var n = Math.floor(Math.random() * 16.0).toString(16);
+                guid += n;
+                if ((i == 8) || (i == 12) || (i == 16) || (i == 20))
+                    guid += "-";
+            }
+            return guid;
+        }
+ 
+        $(document).ready(function () {
+            $("#SendDataContainer").hide();
+            var WebSocketsExist = false;
+            if ("WebSocket" in window) {
+                WebSocketsExist = true;
+            }
+            if (WebSocketsExist) {
+                var data = MsgData(SYSYEMINFO, "您的浏览器支持WebSocket. 您可以尝试连接到聊天服务器!");
+                Log(data);
+                document.getElementById("Connection").value = "192.168.31.120:7071";
+            } else {
+                var data = MsgData(ERROR, "您的浏览器不支持WebSocket。请选择其他的浏览器再尝试连接服务器。");
+                Log(data);
+                document.getElementById("ToggleConnection").disabled = true;
+            }
+ 
+            $("#DataToSend").keypress(function (evt) {
+                if (evt.keyCode == 13) {
+                    $("#SendData").click();
+                    evt.preventDefault();
+                }
+            })
+        });
+ 
+    </script>
+</body>
+</html>
