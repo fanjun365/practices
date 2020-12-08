@@ -196,8 +196,7 @@ namespace ConsoleApp1
                 {
                     if (socket.IsDataMasked)
                     {
-                        DataFrame dataFrame = new 
-                            DataFrame(message);
+                        DataFrame dataFrame = new DataFrame(message);
                         socket.Send(dataFrame.GetBytes());
                     }
                     else

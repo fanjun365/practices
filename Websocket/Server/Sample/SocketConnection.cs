@@ -190,16 +190,22 @@ namespace ConsoleApp1
         /// <param name="asyncResult"></param>
         private void HandleHandshake(IAsyncResult asyncResult)
         {
+            /* WebSocket的握手流程
+             * 1.监听并读取到请求报文
+             * 2.构造握手响应报文，规则：格式参见 newHandshake
+             *   其中 Sec-WebSocket-Accept 的值为：从前端请求报文中获取Sec-WebSocket-Key，拼接上服务端自己定义的ID字符串，然后用sha1加密，再然后转为base64编码格式。
+             * 3.发送响应报文
+             */
             try
             {
                 string header = "Sec-WebSocket-Version:";
-                int HandshakeLength = (int)asyncResult.AsyncState;
+                int handshakeLength = (int)asyncResult.AsyncState;
                 byte[] last8Bytes = new byte[8];
 
                 UTF8Encoding encoding = new UTF8Encoding();
-                string rawClientHandshake = encoding.GetString(receivedDataBuffer, 0, HandshakeLength);
+                string rawClientHandshake = encoding.GetString(receivedDataBuffer, 0, handshakeLength);
 
-                Array.Copy(receivedDataBuffer, HandshakeLength - 8, last8Bytes, 0, 8);
+                Array.Copy(receivedDataBuffer, handshakeLength - 8, last8Bytes, 0, 8);
                 //现在使用的是比较新的WebSocket协议
                 if (rawClientHandshake.IndexOf(header) != -1)
                 {
@@ -269,12 +275,11 @@ namespace ConsoleApp1
         {
             //结束挂起的异步发送
             bindSocket.EndSend(asyncResult);
-            bindSocket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length,
-                0, new AsyncCallback(Read), null);
+            bindSocket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, new AsyncCallback(ReadDataContent), null);
             Connected?.Invoke(this, "");
         }
 
-        private void Read(IAsyncResult asyncResult)
+        private void ReadDataContent(IAsyncResult asyncResult)
         {
             if (!bindSocket.Connected)
             {
@@ -314,8 +319,7 @@ namespace ConsoleApp1
                     message = dataFrame.Text;
                 }
 
-                if ((message.Length == maxBufferSize && message[0] == Convert.ToChar(65533)) ||
-                      message.Length == 0)
+                if ((message.Length == maxBufferSize && message[0] == Convert.ToChar(65533)) || message.Length == 0)
                 {
                     //断开连接
                     logger?.Info("message");
@@ -334,12 +338,12 @@ namespace ConsoleApp1
                 {
                     if (DataReceived != null)
                     {
-                        logger?.Info("接受到的信息 [\"" + message + "\"]");
+                        logger?.Info("接收到的信息 [\"" + message + "\"]");
                         //消息发送
-                        DataReceived?.Invoke(this, message);
+                        DataReceived(this, message);
                     }
                     Array.Clear(receivedDataBuffer, 0, receivedDataBuffer.Length);
-                    bindSocket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, Read, null);
+                    bindSocket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, ReadDataContent, null);
                 }
             }
             catch (Exception ex)
