@@ -3,3 +3,10 @@
 ################################################################################
 
 /.vs/slnx.sqlite-journal
+/.vs/slnx.sqlite
+/.vs/ProjectSettings.json
+/Websocket/Server/.vs
+/Websocket/Server/bin/Debug
+/Websocket/Server/obj
+/Websocket/Server/packages/Newtonsoft.Json.12.0.3
+*.sln
